@@ -18,7 +18,7 @@ def load_trace(filename: str) -> pd.DataFrame:
     )
 
 
-def to_train_diffs(df: pd.DataFrame, window_size: int) -> Tuple[np.ndarray, np.ndarray]:
+def to_train_diffs(df: pd.DataFrame, window_size: int = 64) -> Tuple[np.ndarray, np.ndarray]:
     diffs = np.diff(df["addr"].apply(lambda n: int(n, 16)).values).astype(np.float64)
     diffs /= max(diffs)
     sequences = sliding_window_view(diffs, window_size)

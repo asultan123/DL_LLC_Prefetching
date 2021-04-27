@@ -3,7 +3,7 @@
 import argparse
 import os
 import sys
-import csv
+import prep
 from model import Model
 
 default_results_dir = './results'
@@ -368,15 +368,18 @@ def read_load_trace_data(load_trace, num_prefetch_warmup_instructions):
         split = line.strip().split(', ')
         return int(split[0]), int(split[1]), int(split[2], 16), int(split[3], 16), split[4] == '1'
 
-    train_data = []
-    eval_data = []
-    with open(load_trace, 'r') as f:
-        for line in f:
-            pline = process_line(line)
-            if pline[0] < num_prefetch_warmup_instructions * 1000000:
-                train_data.append(pline)
-            else:
-                eval_data.append(pline)
+    trace = prep.load_trace(load_trace)
+    train_data, eval_data = trace[:num_prefetch_warmup_instructions], trace[num_prefetch_warmup_instructions:]
+    
+    # train_data = []
+    # eval_data = []
+    # with open(load_trace, 'r') as f:
+    #     for line in f:
+    #         pline = process_line(line)
+    #         if pline[0] < num_prefetch_warmup_instructions * 1000000:
+    #             train_data.append(pline)
+    #         else:
+    #             eval_data.append(pline)
 
     return train_data, eval_data
 
@@ -390,11 +393,12 @@ def train_command():
     parser.add_argument('load_trace', default=None)
     parser.add_argument('--generate', default=None)
     parser.add_argument('--model', default=None)
-    parser.add_argument('--num-prefetch-warmup-instructions', default=default_warmup_instrs)
+    parser.add_argument('--num-prefetch-warmup-instructions', default=default_warmup_instrs, type=int)
 
     args = parser.parse_args(sys.argv[2:])
 
     train_data, eval_data = read_load_trace_data(args.load_trace, args.num_prefetch_warmup_instructions)
+    train_data = prep.to_train_diffs(train_data)
 
     model = Model()
     model.train(train_data)
