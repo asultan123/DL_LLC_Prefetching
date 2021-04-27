@@ -5,6 +5,7 @@ import os
 import sys
 import prep
 from model import Model
+import config
 
 default_results_dir = './results'
 default_output_file = './stats.csv'
@@ -370,16 +371,7 @@ def read_load_trace_data(load_trace, num_prefetch_warmup_instructions):
 
     trace = prep.load_trace(load_trace)
     train_data, eval_data = trace[:num_prefetch_warmup_instructions], trace[num_prefetch_warmup_instructions:]
-    
-    # train_data = []
-    # eval_data = []
-    # with open(load_trace, 'r') as f:
-    #     for line in f:
-    #         pline = process_line(line)
-    #         if pline[0] < num_prefetch_warmup_instructions * 1000000:
-    #             train_data.append(pline)
-    #         else:
-    #             eval_data.append(pline)
+
 
     return train_data, eval_data
 
@@ -397,17 +389,21 @@ def train_command():
 
     args = parser.parse_args(sys.argv[2:])
 
-    train_data, eval_data = read_load_trace_data(args.load_trace, args.num_prefetch_warmup_instructions)
-    train_data = prep.to_train_diffs(train_data)
+    train_data, test_data = read_load_trace_data(args.load_trace, args.num_prefetch_warmup_instructions)
+    train_data, _, training_set_on_gpu = prep.to_diffs(train_data, move_to_gpu=True)
+    train_loader = prep.to_dataloader(train_data, config.BATCH_SIZE, training_set_on_gpu)
+    test_data, _, _ = prep.to_diffs(test_data)
+    test_loader = prep.to_dataloader(test_data, batch_size=config.BATCH_SIZE)
 
-    model = Model()
-    model.train(train_data)
+
+    model = Model(256)
+    model.train(train_loader, training_set_on_gpu)
 
     if args.model is not None:
         model.save(args.model)
 
     if args.generate is not None:
-        prefetches = model.generate(eval_data)
+        prefetches = model.generate(test_loader)
         generate_prefetch_file(args.generate, prefetches)
 
 def generate_command():

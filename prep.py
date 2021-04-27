@@ -1,13 +1,13 @@
 import sys
-from typing import Tuple, Type
+from typing import Dict, Tuple, Type
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
-from torch import nn, optim
 from numpy.lib.stride_tricks import sliding_window_view
 from torch.utils.data import DataLoader, TensorDataset
+import config
 
 
 def load_trace(filename: str) -> pd.DataFrame:
@@ -18,47 +18,43 @@ def load_trace(filename: str) -> pd.DataFrame:
     )
 
 
-def to_train_diffs(df: pd.DataFrame, window_size: int = 64) -> Tuple[np.ndarray, np.ndarray]:
-    diffs = np.diff(df["addr"].apply(lambda n: int(n, 16)).values).astype(np.float64)
+def to_diffs(df: pd.DataFrame, window_size: int = config.DIFFS_DEFAULT_WINDOW, move_to_gpu: bool = False) -> Tuple[Tuple[torch.Tensor, torch.Tensor], Dict, bool]:
+    diffs = np.diff(df["addr"].apply(
+        lambda n: int(n, 16)).values).astype(np.float64)
     diffs /= max(diffs)
-    sequences = sliding_window_view(diffs, window_size)
+    # shape = len(diffs), window_size
+    sequences = np.copy(sliding_window_view(diffs, window_size))
     targets = sequences[1:, -1]
-    return sequences[:-1], targets
+    sequences = torch.tensor(sequences[:-1])
+    targets = torch.tensor(targets)
+    instr_id = torch.tensor(df["insn_id"].to_numpy())
+    addr = torch.tensor([int(addr, 16) for addr in df["addr"].to_numpy()])
+    pc = torch.tensor([int(str(pc).strip(), 16) for pc in df["pc"].to_numpy()])
+    hit = torch.tensor(df["hit"].to_numpy())
+    dataset_size = sequences.numpy().nbytes + targets.numpy().nbytes + instr_id.numpy().nbytes + \
+        addr.numpy().nbytes + pc.numpy().nbytes + hit.numpy().nbytes
+
+    if move_to_gpu and (dataset_size < config.GPU_MEM_SIZE_BYTES-config.GPU_MEM_SIZE_MARGIN_BYTES):
+        dataset_on_gpu = True
+        sequences.cuda()
+        targets.cuda()
+        instr_id.cuda()
+        addr.cuda()
+        pc.cuda()
+        hit.cuda()
+    else:
+        dataset_on_gpu = False
+    
+    metadata_tensors = {}
+    metadata_tensors['instr_id'] = instr_id
+    metadata_tensors['addr'] = addr
+    metadata_tensors['pc'] = pc
+    metadata_tensors['hit'] = hit
+    metadata_tensors['max_diffs'] = max(diffs)
+
+    return (sequences, targets), metadata_tensors, dataset_on_gpu
 
 
-class RegressionRNN(nn.Module):
-    def __init__(self, hidden: int, n_layers: int = 1):
-        super().__init__()
-        self.rnn = nn.LSTM(input_size=1, hidden_size=hidden, num_layers=n_layers)
-        self.regressor = nn.Linear(hidden, 1)
-
-    def forward(self, input_seq: torch.Tensor) -> torch.Tensor:
-        latent_sequence, _ = self.rnn(input_seq.permute(1, 0, 2))
-        return self.regressor(latent_sequence[-1])
-
-
-if __name__ == "__main__":
-    # CONSTANTS
-    BATCH_SIZE = 64
-    SEQ_LEN = 32
-    N_LAYERS = 2
-    HIDDEN_DIM = 256
-    MAX_CLIP = 50
-
-    # CODE
-    df = load_trace(sys.argv[1])
-    data = TensorDataset(*map(torch.tensor, to_train_diffs(df, SEQ_LEN)))
-    loader = DataLoader(data, batch_size=BATCH_SIZE, shuffle=False, pin_memory=True)
-    network = RegressionRNN(HIDDEN_DIM, n_layers=N_LAYERS).double().cuda()
-    opt = optim.Adam(network.parameters(), lr=1e-3, eps=1e-7)
-    criterion = nn.MSELoss().cuda()
-    for i, (seq_batch, label_batch) in enumerate(loader):
-        opt.zero_grad(set_to_none=True)
-        loss = criterion(
-            network(seq_batch.unsqueeze(-1).cuda()), label_batch.unsqueeze(-1).cuda()
-        )
-        loss.backward()
-        nn.utils.clip_grad_norm_(network.parameters(), MAX_CLIP)
-        opt.step()
-        if i % 100 == 99:
-            print(f"Iter{i} loss: {loss}")
+def to_dataloader(train_diffs: np.ndarray, batch_size: int, dataset_on_gpu: bool = False) -> DataLoader:
+    dataset = TensorDataset(*train_diffs)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=False, pin_memory=(not dataset_on_gpu))

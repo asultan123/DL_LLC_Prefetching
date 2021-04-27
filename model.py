@@ -1,4 +1,7 @@
 from abc import ABC, abstractmethod
+from torch import nn, optim, torch
+import config
+
 
 class MLPrefetchModel(object):
     '''
@@ -51,6 +54,7 @@ class MLPrefetchModel(object):
         '''
         pass
 
+
 class NextLineModel(MLPrefetchModel):
 
     def load(self, path):
@@ -89,78 +93,57 @@ class NextLineModel(MLPrefetchModel):
 
         return prefetches
 
-'''
-# Example PyTorch Model
-import torch
-import torch.nn as nn
 
-class PytorchMLModel(nn.Module):
-
-    def __init__(self):
+class TimeSeriesLSTM(nn.Module):
+    def __init__(self, hidden: int, n_layers: int = 1):
         super().__init__()
-        # Initialize your neural network here
-        # For example
-        self.embedding = nn.Embedding(...)
-        self.fc = nn.Linear(...)
+        self.rnn = nn.LSTM(input_size=1, hidden_size=hidden,
+                           num_layers=n_layers, batch_first = True)
+        self.regressor = nn.Linear(hidden, 1)
 
-    def forward(self, x):
-        # Forward pass for your model here
-        # For example
-        return self.relu(self.fc(self.embedding(x)))
+    def forward(self, input_seq: torch.Tensor) -> torch.Tensor:
+        latent_sequence, _ = self.rnn(input_seq)
+        return self.regressor(latent_sequence)
 
-class TerribleMLModel(MLPrefetchModel):
-    """
-    This class effectively functions as a wrapper around the above custom
-    pytorch nn.Module. You can approach this in another way so long as the the
-    load/save/train/generate functions behave as described above.
 
-    Disclaimer: It's terrible since the below criterion assumes a gold Y label
-    for the prefetches, which we don't really have. In any case, the below
-    structure more or less shows how one would use a ML framework with this
-    script. Happy coding / researching! :)
-    """
+class TimeSeriesLSTMPrefetcher(MLPrefetchModel):
+    def __init__(self, hidden: int, n_layers: int = config.N_LAYERS):
+        self.model = TimeSeriesLSTM(hidden, n_layers).double().cuda()
+        self.criterion = nn.MSELoss().cuda()
+        self.optimizer = optim.Adam(self.model.parameters())
+        self.scheduler = optim.lr_scheduler.StepLR(
+            self.optimizer, step_size=0.1)
 
-    def __init__(self):
-        self.model = PytorchMLModel()
-    
     def load(self, path):
         self.model = torch.load_state_dict(torch.load(path))
 
     def save(self, path):
         torch.save(self.model.state_dict(), path)
 
-    def train(self, data):
-        # Just standard run-time here
+    def train(self, loader, training_set_on_gpu: False):
         self.model.train()
-        criterion = nn.CrossEntropyLoss()
-        optimizer = nn.optim.Adam(self.model.parameters())
-        scheduler = nn.optim.lr_scheduler.StepLR(optimizer, step_size=0.1)
-        for epoch in range(20):
-            # Assuming batch(...) is a generator over the data
-            for i, (x, y) in enumerate(batch(data)):
-                y_pred = self.model(x)
-                loss = criterion(y_pred, y)
-
-                if i % 100 == 0:
-                    print('Loss:', loss.item())
-
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-            scheduler.step()
+        for i, (seq_batch, label_batch) in enumerate(loader):
+            self.optimizer.zero_grad(set_to_none=True)
+            model_prediction = self.model(seq_batch.unsqueeze(-1).cuda())[:,-1,:]
+            loss = self.criterion(model_prediction, label_batch.unsqueeze(-1).cuda())
+            loss.backward()
+            nn.utils.clip_grad_norm_(self.model.parameters(), config.MAX_CLIP)
+            self.optimizer.step()
+            self.scheduler.step()
+            if i % 100 == 99:
+                print(f"Iter{i} loss: {loss}")
 
     def generate(self, data):
         self.model.eval()
         prefetches = []
         for i, (x, _) in enumerate(batch(data, random=False)):
             y_pred = self.model(x)
-            
+
             for xi, yi in zip(x, y_pred):
                 # Where instr_id is a function that extracts the unique instr_id
                 prefetches.append((instr_id(xi), yi))
 
         return prefetches
-'''
 
-# Replace this if you create your own model
-Model = NextLineModel
+
+Model = TimeSeriesLSTMPrefetcher
