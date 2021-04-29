@@ -150,8 +150,6 @@ class TimeSeriesLSTMPrefetcher(MLPrefetchModel):
                 # prefetche counts greater than 2 will be ignored by simulator
                 prefetches.extend(list(zip(instr_id.tolist(), load_addr)))
                 bar.update(1)
-                if (i+1) % 2000 == 0:
-                    break
         bar.close()
         return prefetches
 
