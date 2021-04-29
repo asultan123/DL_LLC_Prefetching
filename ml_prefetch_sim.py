@@ -389,21 +389,24 @@ def train_command():
 
     args = parser.parse_args(sys.argv[2:])
 
-    train_data, test_data = read_load_trace_data(args.load_trace, args.num_prefetch_warmup_instructions)
+    print("Loading trace file")
+    train_data, test_data = read_load_trace_data(args.load_trace, args.num_prefetch_warmup_instructions*1000000)
+    print("Loading train data from trace")
     train_data, _, training_set_on_gpu = prep.to_diffs(train_data, move_to_gpu=True)
     train_loader = prep.to_dataloader(train_data, config.BATCH_SIZE, training_set_on_gpu)
-    test_data, _, _ = prep.to_diffs(test_data)
-    test_loader = prep.to_dataloader(test_data, batch_size=config.BATCH_SIZE)
-
+    print("Loading test data from trace")
+    test_data, meta_data_test, _ = prep.to_diffs(test_data, move_to_gpu=False)
+    test_data = (*test_data, meta_data_test["instr_id"], meta_data_test["addr"])
+    test_loader = prep.to_dataloader(test_data, batch_size=config.GENERATE_BATCH_SIZE)
 
     model = Model(256)
-    model.train(train_loader, training_set_on_gpu)
+#    model.train(train_loader, training_set_on_gpu)
 
     if args.model is not None:
         model.save(args.model)
 
     if args.generate is not None:
-        prefetches = model.generate(test_loader)
+        prefetches = model.generate(test_loader, meta_data_test["max_diffs"]) 
         generate_prefetch_file(args.generate, prefetches)
 
 def generate_command():

@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
+from tqdm import tqdm 
 from torch import nn, optim, torch
+from math import floor
 import config
 
 
@@ -122,6 +124,7 @@ class TimeSeriesLSTMPrefetcher(MLPrefetchModel):
 
     def train(self, loader, training_set_on_gpu: False):
         self.model.train()
+        bar = tqdm(total=len(loader))
         for i, (seq_batch, label_batch) in enumerate(loader):
             self.optimizer.zero_grad(set_to_none=True)
             model_prediction = self.model(seq_batch.unsqueeze(-1).cuda())[:,-1,:]
@@ -130,19 +133,26 @@ class TimeSeriesLSTMPrefetcher(MLPrefetchModel):
             nn.utils.clip_grad_norm_(self.model.parameters(), config.MAX_CLIP)
             self.optimizer.step()
             self.scheduler.step()
+            bar.update(1)
             if i % 100 == 99:
                 print(f"Iter{i} loss: {loss}")
+        bar.close()
 
-    def generate(self, data):
-        self.model.eval()
-        prefetches = []
-        for i, (x, _) in enumerate(batch(data, random=False)):
-            y_pred = self.model(x)
-
-            for xi, yi in zip(x, y_pred):
-                # Where instr_id is a function that extracts the unique instr_id
-                prefetches.append((instr_id(xi), yi))
-
+    def generate(self, loader, max_diffs):
+        bar = tqdm(total = len(loader))
+        with torch.no_grad():
+            self.model.eval()
+            prefetches = []
+            for i, (seq_batch, _, instr_id, addr) in  enumerate(loader):
+                model_prediction = self.model(seq_batch.unsqueeze(-1).cuda())[:,-1,:]
+                load_delta = (model_prediction*max_diffs).floor().long()
+                load_addr = (addr.unsqueeze(1).cuda() + load_delta).squeeze(1).tolist()
+                # prefetche counts greater than 2 will be ignored by simulator
+                prefetches.extend(list(zip(instr_id.tolist(), load_addr)))
+                bar.update(1)
+                if (i+1) % 2000 == 0:
+                    break
+        bar.close()
         return prefetches
 
 

@@ -880,8 +880,8 @@ int main(int argc, char **argv)
             // proceed one cycle
             current_core_cycle[i]++;
 
-            cout << "Trying to process instr_id: " << ooo_cpu[i].instr_unique_id << " fetch_stall: " << +ooo_cpu[i].fetch_stall;
-            cout << " stall_cycle: " << stall_cycle[i] << " current: " << current_core_cycle[i] << endl;
+            // cout << "Trying to process instr_id: " << ooo_cpu[i].instr_unique_id << " fetch_stall: " << +ooo_cpu[i].fetch_stall;
+            // cout << " stall_cycle: " << stall_cycle[i] << " current: " << current_core_cycle[i] << endl;
 
             // core might be stalled due to page fault or branch misprediction
             if (stall_cycle[i] <= current_core_cycle[i])
