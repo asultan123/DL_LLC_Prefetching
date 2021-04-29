@@ -4,7 +4,7 @@ import argparse
 import os
 import sys
 import prep
-from model import Model, TimeSeriesLSTMPrefetcher
+from model import Model, TimeSeriesLSTM, TimeSeriesLSTMPrefetcher
 import config
 
 default_results_dir = "./results"
@@ -523,7 +523,7 @@ def generate_command():
 
     args = parser.parse_args(sys.argv[2:])
 
-    model = Model()
+    model = TimeSeriesLSTMPrefetcher(256)
     model.load(args.model)
 
     _, data = read_load_trace_data(

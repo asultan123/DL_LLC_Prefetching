@@ -1,6 +1,9 @@
 # IDE settings
 .vscode/
 
+#Data
+ML-DPC/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

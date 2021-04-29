@@ -1,7 +1,9 @@
 from abc import ABC, abstractmethod
+from typing import Optional
 from tqdm import tqdm
 import torch
 from torch import optim, nn
+from torch.utils.data import DataLoader
 from math import floor
 import config
 
@@ -153,6 +155,42 @@ class TimeSeriesLSTMPrefetcher(MLPrefetchModel):
                 bar.update(1)
         bar.close()
         return prefetches
+
+
+class TransformerPrefetcher(MLPrefetchModel):
+    def __init__(
+        self,
+        n_heads: int,
+        hidden_dim: int,
+        n_layers: int,
+        dropout: Optional[float] = None,
+    ) -> None:
+        super().__init__()
+        self.layer = nn.TransformerEncoderLayer(
+            hidden_dim, n_heads, dim_feedforward=hidden_dim // 2
+        )
+        self.model = nn.TransformerEncoder(self.layer, num_layers=n_layers)
+        self.optimizer = optim.Adam(self.model.parameters())
+        self.criterion = nn.MSELoss()
+
+    def load(self, path):
+        raise NotImplementedError
+
+    def save(self, path):
+        raise NotImplementedError
+
+    def train(self, loader: DataLoader):
+        self.model.train()
+        for i, (seq_batch, label_batch) in enumerate(loader):
+            self.optimizer.zero_grad(set_to_none=True)
+            model_prediction = self.model(seq_batch.unsqueeze(-1).cuda())[:, -1, :]
+            print(model_prediction.shape)
+            loss = self.criterion(model_prediction, label_batch.unsqueeze(-1).cuda())
+            loss.backward()
+            nn.utils.clip_grad_norm_(self.model.parameters(), config.MAX_CLIP)
+            self.optimizer.step()
+            if i % 100 == 99:
+                print(f"Iter{i} loss: {loss}")
 
 
 Model = TimeSeriesLSTMPrefetcher
