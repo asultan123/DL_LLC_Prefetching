@@ -5,9 +5,8 @@ import os
 import sys
 import prep
 from model import (
-    AttentionRegressor,
-    TimeSeriesLSTMPrefetcher,
     AttentionPrefetcher,
+    TimeSeriesLSTMPrefetcher,
 )
 import config
 
@@ -491,10 +490,15 @@ def train_command():
         args.load_trace, args.num_prefetch_warmup_instructions * 1_000_000
     )
     print("Loading train data from trace")
-    train_data = prep.df_to_tensor(train_data, diff_cols=["addr", "pc"])
+    train_data = prep.df_to_tensor(
+        train_data.drop(columns=["hit"]), diff_cols=["pc", "addr"]
+    )
 
     model = AttentionPrefetcher(
-        n_features=train_data.shape[1], n_heads=1, hidden_dim=config.HIDDEN_DIM
+        input_dim=train_data.shape[-1],
+        hidden_dim=config.HIDDEN_DIM,
+        key_dim=config.KEY_DIM,
+        seq_length=config.DIFFS_DEFAULT_WINDOW,
     )
 
     model.train(train_data)

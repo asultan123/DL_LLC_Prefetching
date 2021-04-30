@@ -4,6 +4,10 @@
 #Data
 ML-DPC
 
+#All pyTorch tensor files
+*.pt
+*.ckpt
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

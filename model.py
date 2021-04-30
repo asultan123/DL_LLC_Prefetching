@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader, dataloader
 from lambda_networks import LambdaLayer
 from math import floor
 import config
+import einops
 
 
 class MLPrefetchModel(object):
@@ -159,33 +160,40 @@ class TimeSeriesLSTMPrefetcher(MLPrefetchModel):
         return prefetches
 
 
-class AttentionRegressor(nn.Module):
-    def __init__(self, n_features: int, n_heads: int, hidden_dim: int):
+class LambdaNetRegressor(nn.Module):
+    def __init__(self, input_dim: int, hidden_dim: int, key_dim: int, seq_length: int):
         super().__init__()
-        self.diff_embedding = nn.Linear(n_features, hidden_dim)
-        self.regressor = LambdaLayer(
-            hidden_dim, dim_k=hidden_dim, heads=n_heads, dim_out=hidden_dim // 2
-        )
-        self.output = nn.Linear(hidden_dim // 2, 1)
+        self._attention_map_size = seq_length * hidden_dim
+        self.sequence_embedder = nn.Linear(input_dim, hidden_dim)
+        self.to_keys = nn.Linear(hidden_dim, key_dim)
+        self.to_query = nn.Linear(hidden_dim, key_dim)
+        self.to_values = nn.Linear(hidden_dim, hidden_dim)
+        self.to_delta = nn.Linear(self._attention_map_size, 1)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        embedded = self.diff_embedding(x)
-        attention = self.regressor(embedded)
-        print(attention.shape)
-        return self.output(attention)
+    def forward(self, input_seq: torch.Tensor) -> torch.Tensor:
+        """
+        shape must be (sequence length, batch_size, dims)
+        """
+        embedded = self.sequence_embedder(input_seq)
+        keys = torch.softmax(self.to_keys(embedded), dim=1)
+        queries = self.to_query(embedded)
+        values = self.to_values(embedded)
+        context_lambda = torch.bmm(keys.permute(0, 2, 1), values)
+        attention_map = torch.bmm(queries, context_lambda)
+        return self.to_delta(attention_map.view(-1, self._attention_map_size))
 
 
 class AttentionPrefetcher(MLPrefetchModel):
-    def __init__(self, n_features: int, n_heads, hidden_dim: int) -> None:
+    def __init__(self, input_dim: int, hidden_dim: int, key_dim: int, seq_length: int) -> None:
         super().__init__()
-        self.model = AttentionRegressor(n_features, n_heads, hidden_dim).cuda()
+        self.model = LambdaNetRegressor(input_dim, hidden_dim, key_dim, seq_length).double().cuda()
 
     def train(self, train_data: torch.Tensor):
-        labels = train_data[1:, -1]
+        labels = train_data[1:, -1, -1]
         loader = DataLoader(
-            TensorDataset(train_data[:-1], labels), batch_size=config.BATCH_SIZE
+            TensorDataset(train_data[:-1], labels), batch_size=config.BATCH_SIZE,drop_last=True
         )
-        opt = optim.Adam(self.model.parameters(), lr=1e-3).cuda()  # type: ignore
+        opt = optim.Adam(self.model.parameters(), lr=1e-3)  # type: ignore
         criterion = nn.MSELoss()
         for i, (seq_batch, label_batch) in tqdm(enumerate(loader), total=len(loader)):
             opt.zero_grad(set_to_none=True)
