@@ -400,12 +400,14 @@ def train_command():
     test_loader = prep.to_dataloader(test_data, batch_size=config.GENERATE_BATCH_SIZE)
 
     model = Model(256)
-#    model.train(train_loader, training_set_on_gpu)
+    print("Training Model")
+    model.train(train_loader, training_set_on_gpu)
 
     if args.model is not None:
         model.save(args.model)
 
     if args.generate is not None:
+        print("Generating prefetches")
         prefetches = model.generate(test_loader, meta_data_test["max_diffs"]) 
         generate_prefetch_file(args.generate, prefetches)
 
