@@ -1,9 +1,11 @@
 from abc import ABC, abstractmethod
 from typing import Optional
+from torch.utils.data.dataset import TensorDataset
 from tqdm import tqdm
 import torch
 from torch import optim, nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, dataloader
+from lambda_networks import LambdaLayer
 from math import floor
 import config
 
@@ -125,7 +127,7 @@ class TimeSeriesLSTMPrefetcher(MLPrefetchModel):
     def save(self, path):
         torch.save(self.model.state_dict(), path)
 
-    def train(self, loader, training_set_on_gpu: bool = False):
+    def train(self, loader):
         self.model.train()
         bar = tqdm(total=len(loader))
         for i, (seq_batch, label_batch) in enumerate(loader):
@@ -157,40 +159,43 @@ class TimeSeriesLSTMPrefetcher(MLPrefetchModel):
         return prefetches
 
 
-class TransformerPrefetcher(MLPrefetchModel):
-    def __init__(
-        self,
-        n_heads: int,
-        hidden_dim: int,
-        n_layers: int,
-        dropout: Optional[float] = None,
-    ) -> None:
+class AttentionRegressor(nn.Module):
+    def __init__(self, n_features: int, n_heads: int, hidden_dim: int):
         super().__init__()
-        self.layer = nn.TransformerEncoderLayer(
-            hidden_dim, n_heads, dim_feedforward=hidden_dim // 2
+        self.diff_embedding = nn.Linear(n_features, hidden_dim)
+        self.regressor = LambdaLayer(
+            hidden_dim, dim_k=hidden_dim, heads=n_heads, dim_out=hidden_dim // 2
         )
-        self.model = nn.TransformerEncoder(self.layer, num_layers=n_layers)
-        self.optimizer = optim.Adam(self.model.parameters())
-        self.criterion = nn.MSELoss()
+        self.output = nn.Linear(hidden_dim // 2, 1)
 
-    def load(self, path):
-        raise NotImplementedError
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        embedded = self.diff_embedding(x)
+        attention = self.regressor(embedded)
+        print(attention.shape)
+        return self.output(attention)
 
-    def save(self, path):
-        raise NotImplementedError
 
-    def train(self, loader: DataLoader):
-        self.model.train()
-        for i, (seq_batch, label_batch) in enumerate(loader):
-            self.optimizer.zero_grad(set_to_none=True)
-            model_prediction = self.model(seq_batch.unsqueeze(-1).cuda())[:, -1, :]
-            print(model_prediction.shape)
-            loss = self.criterion(model_prediction, label_batch.unsqueeze(-1).cuda())
-            loss.backward()
+class AttentionPrefetcher(MLPrefetchModel):
+    def __init__(self, n_features: int, n_heads, hidden_dim: int) -> None:
+        super().__init__()
+        self.model = AttentionRegressor(n_features, n_heads, hidden_dim).cuda()
+
+    def train(self, train_data: torch.Tensor):
+        labels = train_data[1:, -1]
+        loader = DataLoader(
+            TensorDataset(train_data[:-1], labels), batch_size=config.BATCH_SIZE
+        )
+        opt = optim.Adam(self.model.parameters(), lr=1e-3).cuda()  # type: ignore
+        criterion = nn.MSELoss()
+        for i, (seq_batch, label_batch) in tqdm(enumerate(loader), total=len(loader)):
+            opt.zero_grad(set_to_none=True)
+            predictions = self.model(seq_batch)
+            loss = criterion(predictions, label_batch)
             nn.utils.clip_grad_norm_(self.model.parameters(), config.MAX_CLIP)
-            self.optimizer.step()
+            loss.backward()
+            opt.step()
             if i % 100 == 99:
-                print(f"Iter{i} loss: {loss}")
+                print(f"Iter {i} loss: {loss:.3f}")
 
-
-Model = TimeSeriesLSTMPrefetcher
+    def generate(self, data: torch.Tensor):
+        pass

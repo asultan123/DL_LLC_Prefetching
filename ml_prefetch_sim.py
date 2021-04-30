@@ -4,7 +4,11 @@ import argparse
 import os
 import sys
 import prep
-from model import Model, TimeSeriesLSTM, TimeSeriesLSTMPrefetcher
+from model import (
+    AttentionRegressor,
+    TimeSeriesLSTMPrefetcher,
+    AttentionPrefetcher,
+)
 import config
 
 default_results_dir = "./results"
@@ -483,21 +487,17 @@ def train_command():
     args = parser.parse_args(sys.argv[2:])
 
     print("Loading trace file")
-    train_data, test_data = read_load_trace_data(
-        args.load_trace, args.num_prefetch_warmup_instructions * 1000000
+    train_data, _ = prep.load_trace(
+        args.load_trace, args.num_prefetch_warmup_instructions * 1_000_000
     )
     print("Loading train data from trace")
-    train_data, _, training_set_on_gpu = prep.to_diffs(train_data, move_to_gpu=True)
-    train_loader = prep.to_dataloader(
-        train_data, config.BATCH_SIZE, training_set_on_gpu
-    )
-    print("Loading test data from trace")
-    test_data, meta_data_test, _ = prep.to_diffs(test_data, move_to_gpu=False)
-    test_data = (*test_data, meta_data_test["instr_id"], meta_data_test["addr"])
-    test_loader = prep.to_dataloader(test_data, batch_size=config.GENERATE_BATCH_SIZE)
+    train_data = prep.df_to_tensor(train_data, diff_cols=["addr", "pc"])
 
-    model = TimeSeriesLSTMPrefetcher(256)
-    model.train(train_loader, training_set_on_gpu)
+    model = AttentionPrefetcher(
+        n_features=train_data.shape[1], n_heads=1, hidden_dim=config.HIDDEN_DIM
+    )
+
+    model.train(train_data)
 
     if args.model is not None:
         model.save(args.model)

@@ -2,7 +2,7 @@
 .vscode/
 
 #Data
-ML-DPC/
+ML-DPC
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
