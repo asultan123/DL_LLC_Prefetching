@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader, dataloader
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
 import math
 import config
-
+import numpy as np
 
 class MLPrefetchModel(object):
     """
@@ -158,15 +158,13 @@ class TimeSeriesLSTMPrefetcher(MLPrefetchModel):
         bar.close()
         return prefetches
 class PositionalEncoding(nn.Module):
-    
-
     def __init__(self, d_model, dropout=0.1, max_len=5000):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
 
         pe = torch.zeros(max_len, d_model)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        position = torch.arange(0, max_len, dtype=torch.double).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).double() * (-math.log(10000.0) / d_model))
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
         pe = pe.unsqueeze(0).transpose(0, 1)
@@ -209,7 +207,7 @@ class TransformerModelPrefetcher(MLPrefetchModel):
                  nhid : int = config.TRANSFORMER_ENCODER_NHEAD, 
                  nlayers : int = config.TRANSFORMER_ENCODER_NLAYERS):
         super().__init__()
-        self.model = TransformerModel(ntokens, emsize, nhead, nhid, nlayers).float().cuda()
+        self.model = TransformerModel(ntokens, emsize, nhead, nhid, nlayers).double().cuda()
         self.criterion = nn.MSELoss().cuda()
         lr = 5.0 # learning rate
         self.optimizer = torch.optim.Adam(self.model.parameters())
@@ -245,25 +243,33 @@ class TransformerModelPrefetcher(MLPrefetchModel):
         bar.close()
 
     def generate(self, loader, norm_data):
+        
         range_addr = norm_data["range_addr"]
         min_addr = norm_data["min_addr"]
         min_diffs = norm_data["min_diffs"]
         range_diffs = norm_data["range_diffs"]
-        instr_id = norm_data["instr_id"]
+        
         bar = tqdm(total=len(loader))
         self.model.eval()
+        def minmax_denormalize(val, min, range):
+            return (((val + 1)/2)*range)+min
         with torch.no_grad():
             prefetches = []
             avg_loss = 0
-            for i, (seq_batch, label_batch) in enumerate(loader):
+            for i, (seq_batch, label_batch, instr_id) in enumerate(loader):
                 model_prediction = self.model(seq_batch.unsqueeze(-1).cuda())
                 loss = self.criterion(model_prediction, label_batch.unsqueeze(-1).cuda())
                 avg_loss += loss.item()
-                load_delta = (model_prediction * range_diffs) + avg_diffs
-                addr = seq_batch[:, :, 2]
-                load_addr = (addr.unsqueeze(1).cuda() + load_delta).squeeze(1).tolist()
+                load_delta = minmax_denormalize(model_prediction, min_diffs, range_diffs)
+                addr = seq_batch[:, -1, 2] # : all entries in batch, -1 last entry in seq, 2 3rd feature (addr) 
+                load_addr = minmax_denormalize(addr, min_addr, range_addr)
+                target_addr = (load_addr + load_delta.squeeze(1).cpu()).long()
+                target_addr = target_addr.numpy().astype("uint64")
+                target_addr = (np.floor(target_addr/config.LLC_LINE_SIZE)*config.LLC_LINE_SIZE).astype("uint64")
+                target_addr = target_addr.tolist()
                 # prefetcher counts greater than 2 will be ignored by simulator
-                prefetches.extend(list(zip(instr_id.tolist(), load_addr)))
+                instr_id = instr_id[:, -1, 0]
+                prefetches.extend(list(zip(instr_id.tolist(), target_addr)))
                 bar.update(1)
                 if i % 100 == 99:
                     avg_loss /= 100

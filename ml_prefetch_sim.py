@@ -448,7 +448,7 @@ def eval_command():
 def generate_prefetch_file(path, prefetches):
     with open(path, "w") as f:
         for instr_id, pf_addr in prefetches:
-            print(instr_id, hex(pf_addr)[2:], file=f)
+            print(instr_id, (hex(pf_addr & 0xFFFFFFFFFFFFFFFF))[2:], file=f)
 
 
 def read_load_trace_data(load_trace, num_prefetch_warmup_instructions):
@@ -463,12 +463,12 @@ def read_load_trace_data(load_trace, num_prefetch_warmup_instructions):
         )
 
     trace = prep.load_trace(load_trace)
-    train_data, eval_data = (
-        trace[:num_prefetch_warmup_instructions],
-        trace[num_prefetch_warmup_instructions:],
-    )
+    # train_data, eval_data = (
+    #     trace[:num_prefetch_warmup_instructions],
+    #     trace[num_prefetch_warmup_instructions:],
+    # )
 
-    return train_data, eval_data
+    return trace
 
 
 def train_command():
@@ -486,28 +486,32 @@ def train_command():
     )
 
     args = parser.parse_args(sys.argv[2:])
-
+    train_split = args.num_prefetch_warmup_instructions*1000000
 
     print("Loading trace file")
-    train_data, test_data = read_load_trace_data(args.load_trace, args.num_prefetch_warmup_instructions*1000000)
+    trace = read_load_trace_data(args.load_trace, args.num_prefetch_warmup_instructions*1000000)
+    
+    print("Creating diffs")
+    features, target, instr_id, norm_data, _ = prep.to_diffs(trace)
+    
     print("Loading train data from trace")
-    train_data, _, training_set_on_gpu = prep.to_diffs(train_data, move_to_gpu=True)
-    train_loader = prep.to_dataloader(train_data, config.BATCH_SIZE, training_set_on_gpu, shuffle=True)
+    train_data = (features[:train_split], target[:train_split])
+    train_loader = prep.to_dataloader(train_data, config.BATCH_SIZE, shuffle=True)
+    
+    print("Loading test data from trace")
+    test_data = (features[train_split:], target[train_split:], instr_id[train_split:])
+    test_loader = prep.to_dataloader(test_data, config.GENERATE_BATCH_SIZE, shuffle=False)
 
     model = Model()
-    print("Training Movedel")
-    model.train(train_loader, iterations=500)
-
-    print("Loading test data from trace")
-    test_data, meta_data_test, _ = prep.to_diffs(test_data, move_to_gpu=False)
-    test_loader = prep.to_dataloader(test_data, batch_size=config.GENERATE_BATCH_SIZE)
+    print("Training Model")
+    model.train(train_loader, iterations=100)
     
     if args.model is not None:
         model.save(args.model)
 
     if args.generate is not None:
         print("Generating prefetches")
-        prefetches = model.generate(test_loader, meta_data_test) 
+        prefetches = model.generate(test_loader, norm_data) 
         generate_prefetch_file(args.generate, prefetches)
 
 

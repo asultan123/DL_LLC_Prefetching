@@ -56,28 +56,32 @@ def to_diffs(
     window_size: int = config.DIFFS_DEFAULT_WINDOW,
     move_to_gpu: bool = False,
 ) -> Tuple[Tuple[torch.Tensor, torch.Tensor], Dict, bool]:
+    
     addr_t = df["addr"].apply(lambda n: int(n, 16)).values
     addr_w = sliding_window_view(addr_t, window_size + 2, writeable=True)
+    
     diffs = np.diff(addr_w)
     max_diffs = np.max(diffs)
     min_diffs = np.min(diffs)
     range_diffs = (max_diffs-min_diffs)
     diffs = 2*((diffs-min_diffs)/range_diffs)-1
+    
     sequences = diffs[:, :window_size]
     targets = diffs[:, window_size]
-    targets = torch.tensor(targets).float()
-    sequences = torch.tensor(sequences).unsqueeze(2).float()
-    instr_id = torch.tensor(sliding_window_view(df["insn_id"].to_numpy()[:-2], window_size, writeable=True)).unsqueeze(2)
+    
+    targets = torch.tensor(targets).double()
+    sequences = torch.tensor(sequences).unsqueeze(2).double()
+    instr_id = torch.tensor(sliding_window_view(df["insn_id"].to_numpy()[:-2], window_size, writeable=True)).unsqueeze(2).long()
     #[-2] to ignore meta data for last delta
-    addr = torch.tensor(sliding_window_view(addr_t[:-2], window_size, writeable=True)).unsqueeze(2).float()
+    addr = torch.tensor(sliding_window_view(addr_t[:-2], window_size, writeable=True)).unsqueeze(2).double()
     range_addr = (addr.max()-addr.min())
     min_addr = addr.min()
     addr = (addr-min_addr)/range_addr
-    pc = torch.tensor(sliding_window_view([int(str(pc).strip(), 16)for pc in df["pc"].to_numpy()][:-2], window_size, writeable=True)).unsqueeze(2).float()
+    pc = torch.tensor(sliding_window_view([int(str(pc).strip(), 16)for pc in df["pc"].to_numpy()][:-2], window_size, writeable=True)).unsqueeze(2).double()
     min_pc = pc.min()
     range_pc = (pc.max()-pc.min())
     pc = (pc-min_pc)/range_pc
-    hit = torch.tensor(sliding_window_view(df["hit"][:-2].to_numpy(), window_size, writeable=True)).unsqueeze(2).float()
+    hit = torch.tensor(sliding_window_view(df["hit"][:-2].to_numpy(), window_size, writeable=True)).unsqueeze(2).double()
 
     sequences = torch.cat((sequences, pc, addr, hit), 2)
 
@@ -102,9 +106,8 @@ def to_diffs(
     norm_data["range_pc"] = range_pc
     norm_data["min_diffs"] = min_diffs
     norm_data["range_diffs"] = range_diffs
-    norm_data["instr_id"] = instr_id
-
-    return (sequences, targets), norm_data, dataset_on_gpu
+    
+    return sequences, targets, instr_id, norm_data, dataset_on_gpu
 
 
 def to_dataloader(
