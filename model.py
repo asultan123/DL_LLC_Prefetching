@@ -201,7 +201,7 @@ class TransformerModel(nn.Module):
         self.decoder.weight.data.uniform_(-initrange, initrange)
 
 class TransformerModelPrefetcher(MLPrefetchModel):
-    def __init__(self, ntokens : int = config.TRANSFORMER_ENCODER_NTOKENS, 
+    def __init__(self, trace, ntokens : int = config.TRANSFORMER_ENCODER_NTOKENS, 
                  emsize : int = config.TRANSFORMER_ENCODER_EMSIZE, 
                  nhead : int = config.TRANSFORMER_ENCODER_NHID, 
                  nhid : int = config.TRANSFORMER_ENCODER_NHEAD, 
@@ -211,6 +211,7 @@ class TransformerModelPrefetcher(MLPrefetchModel):
         self.criterion = nn.MSELoss().cuda()
         lr = 5.0 # learning rate
         self.optimizer = torch.optim.Adam(self.model.parameters())
+        self.current_trace = trace
         # self.optimizer = torch.optim.SGD(self.model.parameters(), lr=lr)
         # self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, 1.0, gamma=0.95)
 
@@ -219,11 +220,16 @@ class TransformerModelPrefetcher(MLPrefetchModel):
 
     def save(self, path):
         torch.save(self.model.state_dict(), path)
+        
+    def log_loss(self, loss, loss_type):
+        loss_tensor = torch.tensor(loss)
+        torch.save(loss_tensor, "./Graphs/{}_transformer_{}_losses.pt".format(self.current_trace,loss_type))
 
     def train(self, loader, iterations = None):
         self.model.train()
         bar = tqdm(total=len(loader))
         avg_loss = 0
+        loss_list = []
         for i, (seq_batch, label_batch) in enumerate(loader):
             self.optimizer.zero_grad(set_to_none=True)
             model_prediction = self.model(seq_batch.unsqueeze(-1).cuda())
@@ -236,10 +242,12 @@ class TransformerModelPrefetcher(MLPrefetchModel):
             bar.update(1)
             if i % 100 == 99:
                 avg_loss /= 100
+                loss_list.append(avg_loss)
                 print(f"Iter{i} avg_loss: {avg_loss}")
                 avg_loss = 0
             if iterations is not None and ((i+1)%iterations==0):
                 break
+        self.log_loss(loss_list, "train")
         bar.close()
 
     def generate(self, loader, norm_data):
@@ -255,6 +263,8 @@ class TransformerModelPrefetcher(MLPrefetchModel):
             return (((val + 1)/2)*range)+min
         def zscore_denormalize(val, mean, std):
             return (val*std)/mean
+        loss_list = []
+        
         with torch.no_grad():
             prefetches = []
             avg_loss = 0
@@ -275,8 +285,10 @@ class TransformerModelPrefetcher(MLPrefetchModel):
                 bar.update(1)
                 if i % 100 == 99:
                     avg_loss /= 100
+                    loss_list.append(avg_loss)
                     print(f"Iter{i} avg_loss: {avg_loss}")
                     avg_loss = 0
+        self.log_loss(loss_list, "test")
         bar.close()
         return prefetches
 

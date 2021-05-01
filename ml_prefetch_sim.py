@@ -11,6 +11,7 @@ from model import (
     Model
 )
 import config
+import os
 
 default_results_dir = "./results"
 default_output_file = "./stats.csv"
@@ -502,7 +503,7 @@ def train_command():
     test_data = (features[train_split:], target[train_split:], instr_id[train_split:])
     test_loader = prep.to_dataloader(test_data, config.BATCH_SIZE, shuffle=False)
 
-    model = Model()
+    model = Model(trace = '.'.join(os.path.basename(args.load_trace).split('.')[:-2]))
     print("Training Model")
     model.train(train_loader)
     
