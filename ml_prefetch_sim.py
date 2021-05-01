@@ -492,7 +492,7 @@ def train_command():
     train_data, test_data = read_load_trace_data(args.load_trace, args.num_prefetch_warmup_instructions*1000000)
     print("Loading train data from trace")
     train_data, _, training_set_on_gpu = prep.to_diffs(train_data, move_to_gpu=True)
-    train_loader = prep.to_dataloader(train_data, config.BATCH_SIZE, training_set_on_gpu)
+    train_loader = prep.to_dataloader(train_data, config.BATCH_SIZE, training_set_on_gpu, shuffle=True)
 
     model = Model()
     print("Training Movedel")

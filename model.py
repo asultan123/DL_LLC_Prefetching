@@ -247,7 +247,7 @@ class TransformerModelPrefetcher(MLPrefetchModel):
     def generate(self, loader, norm_data):
         range_addr = norm_data["range_addr"]
         min_addr = norm_data["min_addr"]
-        avg_diffs = norm_data["avg_diffs"]
+        min_diffs = norm_data["min_diffs"]
         range_diffs = norm_data["range_diffs"]
         instr_id = norm_data["instr_id"]
         bar = tqdm(total=len(loader))
@@ -260,6 +260,7 @@ class TransformerModelPrefetcher(MLPrefetchModel):
                 loss = self.criterion(model_prediction, label_batch.unsqueeze(-1).cuda())
                 avg_loss += loss.item()
                 load_delta = (model_prediction * range_diffs) + avg_diffs
+                addr = seq_batch[:, :, 2]
                 load_addr = (addr.unsqueeze(1).cuda() + load_delta).squeeze(1).tolist()
                 # prefetcher counts greater than 2 will be ignored by simulator
                 prefetches.extend(list(zip(instr_id.tolist(), load_addr)))

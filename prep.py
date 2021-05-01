@@ -61,9 +61,8 @@ def to_diffs(
     diffs = np.diff(addr_w)
     max_diffs = np.max(diffs)
     min_diffs = np.min(diffs)
-    avg_diffs = (min_diffs+max_diffs)/2
-    range_diffs = (max_diffs-min_diffs)/2
-    diffs = (diffs-avg_diffs)/range_diffs
+    range_diffs = (max_diffs-min_diffs)
+    diffs = 2*((diffs-min_diffs)/range_diffs)-1
     sequences = diffs[:, :window_size]
     targets = diffs[:, window_size]
     targets = torch.tensor(targets).float()
@@ -99,9 +98,9 @@ def to_diffs(
     norm_data = {}
     norm_data["range_addr"] = range_addr
     norm_data["min_addr"] = min_addr
-    norm_data["range_pc"] = range_pc
     norm_data["min_pc"] = min_pc
-    norm_data["avg_diffs"] = avg_diffs
+    norm_data["range_pc"] = range_pc
+    norm_data["min_diffs"] = min_diffs
     norm_data["range_diffs"] = range_diffs
     norm_data["instr_id"] = instr_id
 
@@ -109,11 +108,11 @@ def to_diffs(
 
 
 def to_dataloader(
-    dataset: np.ndarray, batch_size: int, dataset_on_gpu: bool = False
+    dataset: np.ndarray, batch_size: int, dataset_on_gpu: bool = False, shuffle: bool = False
 ) -> DataLoader:
     dataset = TensorDataset(*dataset)
     return DataLoader(
-        dataset, batch_size=batch_size, shuffle=True, pin_memory=(not dataset_on_gpu)
+        dataset, batch_size=batch_size, shuffle=shuffle, pin_memory=(not dataset_on_gpu)
     )
 
 
