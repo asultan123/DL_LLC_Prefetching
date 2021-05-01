@@ -489,15 +489,16 @@ def train_command():
     train_data, test = prep.load_trace(
         args.load_trace, args.num_prefetch_warmup_instructions * 1_000_000
     )
-    print(test.head())
     model = AttentionPrefetcher(
         input_dim=2,
         hidden_dim=config.HIDDEN_DIM,
         key_dim=config.KEY_DIM,
         seq_length=config.DIFFS_DEFAULT_WINDOW,
+        tag="/scratch/rodriguez.der/graph/" + args.load_trace.split("/")[-1] + ".LambdaNet",
     )
 
-    model.train(train_data)
+    model.train(train_data, save_losses=True)
+    model.get_test(test)
 
     if args.model is not None:
         model.save(args.model)

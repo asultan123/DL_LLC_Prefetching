@@ -208,6 +208,7 @@ class AttentionPrefetcher(MLPrefetchModel):
             TensorDataset(train_data[:-1], labels),
             batch_size=config.BATCH_SIZE,
             drop_last=True,
+            shuffle=True
         )
         opt = optim.Adam(self.model.parameters(), lr=1e-3)  # type: ignore
         criterion = nn.MSELoss()
@@ -220,8 +221,25 @@ class AttentionPrefetcher(MLPrefetchModel):
             nn.utils.clip_grad_norm_(self.model.parameters(), config.MAX_CLIP)
             loss.backward()
             opt.step()
-        with open(self.tag + "_train_losses.pt", "w") as fp:
-            torch.save(loss_data, fp)
+        torch.save(loss_data, self.tag + ".train_losses.pt")
+    
+    def get_test(self, data: pd.DataFrame):
+        test_data = prep.df_to_tensor(data)
+        labels = test_data[1:, -1, -1]
+        loader = DataLoader(
+            TensorDataset(test_data[:-1], labels),
+            batch_size=config.BATCH_SIZE,
+            drop_last=True,
+        )
+        loss_data = torch.zeros(len(loader), dtype=torch.double)
+        criterion = nn.MSELoss()
+        with torch.no_grad():
+            for i, (seq_batch, label_batch) in tqdm(enumerate(loader), total=len(loader)):
+                predictions = self.model(seq_batch)
+                loss = criterion(predictions.flatten(), label_batch.flatten())
+                loss_data[i] = loss
+            torch.save(loss_data, self.tag + ".test_losses.pt")
+
 
     def generate(self, data: pd.DataFrame):
         origin = torch.tensor(data["addr"].values[0]).long().cuda()
