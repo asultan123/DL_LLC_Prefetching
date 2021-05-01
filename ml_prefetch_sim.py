@@ -489,7 +489,7 @@ def train_command():
     train_split = args.num_prefetch_warmup_instructions*1000000
 
     print("Loading trace file")
-    trace = read_load_trace_data(args.load_trace, args.num_prefetch_warmup_instructions*1000000)
+    trace = prep.load_trace(args.load_trace)
     
     print("Creating diffs")
     features, target, instr_id, norm_data, _ = prep.to_diffs(trace)
@@ -500,11 +500,11 @@ def train_command():
     
     print("Loading test data from trace")
     test_data = (features[train_split:], target[train_split:], instr_id[train_split:])
-    test_loader = prep.to_dataloader(test_data, config.GENERATE_BATCH_SIZE, shuffle=False)
+    test_loader = prep.to_dataloader(test_data, config.BATCH_SIZE, shuffle=False)
 
     model = Model()
     print("Training Model")
-    model.train(train_loader, iterations=100)
+    model.train(train_loader)
     
     if args.model is not None:
         model.save(args.model)
@@ -530,15 +530,24 @@ def generate_command():
     )
 
     args = parser.parse_args(sys.argv[2:])
+    warm_up = args.num_prefetch_warmup_instructions*1000000
 
-    model = TimeSeriesLSTMPrefetcher(256)
+    model = Model()
+    print("Loading model")
     model.load(args.model)
 
-    _, data = read_load_trace_data(
-        args.load_trace, args.num_prefetch_warmup_instructions
-    )
+    print("Loading trace file")
+    trace = prep.load_trace(args.load_trace, skiprows=warm_up)
+    
+    print("Creating diffs")
+    features, target, instr_id, norm_data, _ = prep.to_diffs(trace)
+    
+    print("Loading test data from trace")
+    test_data = (features, target, instr_id)
+    test_loader = prep.to_dataloader(test_data, config.GENERATE_BATCH_SIZE, shuffle=False)
 
-    prefetches = model.generate(data)
+    print("Generating prefetches")
+    prefetches = model.generate(test_loader, norm_data)
 
     generate_prefetch_file(args.prefetch_file, prefetches)
 

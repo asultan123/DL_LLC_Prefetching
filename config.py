@@ -11,6 +11,6 @@ TRANSFORMER_ENCODER_NTOKENS :int = 4 # embedding dimension
 TRANSFORMER_ENCODER_EMSIZE :int = 64 # embedding dimension
 TRANSFORMER_ENCODER_NHID :int = 64 # the dimension of the feedforward network model in nn.TransformerEncoder
 TRANSFORMER_ENCODER_NLAYERS :int = 2 # the number of nn.TransformerEncoderLayer in nn.TransformerEncoder
-TRANSFORMER_ENCODER_NHEAD :int = 4 # the number of heads in the multiheadattention models
+TRANSFORMER_ENCODER_NHEAD :int = 2 # the number of heads in the multiheadattention models
 TRANSFORMER_ENCODER_DROPOUT :int = 0.2 # the dropout value
 LLC_LINE_SIZE = 64

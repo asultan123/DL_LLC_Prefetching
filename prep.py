@@ -23,10 +23,11 @@ import config
 #     df["pc"] = df["pc"].apply(lambda n: int(n, 16))
 #     return df[:split_idx], df[split_idx:]
 
-def load_trace(filename: str) -> pd.DataFrame:
+def load_trace(filename: str, skiprows: int = None) -> pd.DataFrame:
     return pd.read_csv(
         filename,
         compression="xz",
+        skiprows=skiprows,
         names=["insn_id", "cycle", "addr", "pc", "hit"],
     )
 
