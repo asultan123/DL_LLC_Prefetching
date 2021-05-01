@@ -9,19 +9,26 @@ from torch.utils.data import DataLoader, TensorDataset
 import config
 
 
-def load_trace(
-    filename: str, split_idx: int = 1_000_000
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    df = pd.read_csv(
+# def load_trace(
+#     filename: str, split_idx: int = 1_000_000
+# ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+#     df = pd.read_csv(
+#         filename,
+#         compression="xz",
+#         names=["insn_id", "cycle", "addr", "pc", "hit"],
+#     )
+#     df["insn_id"] = df["insn_id"].astype(np.int_)
+#     df["cycle"] = df["cycle"].astype(np.int_)
+#     df["addr"] = df["addr"].apply(lambda n: int(n, 16))
+#     df["pc"] = df["pc"].apply(lambda n: int(n, 16))
+#     return df[:split_idx], df[split_idx:]
+
+def load_trace(filename: str) -> pd.DataFrame:
+    return pd.read_csv(
         filename,
         compression="xz",
         names=["insn_id", "cycle", "addr", "pc", "hit"],
     )
-    df["insn_id"] = df["insn_id"].astype(np.int_)
-    df["cycle"] = df["cycle"].astype(np.int_)
-    df["addr"] = df["addr"].apply(lambda n: int(n, 16))
-    df["pc"] = df["pc"].apply(lambda n: int(n, 16))
-    return df[:split_idx], df[split_idx:]
 
 
 def df_to_tensor(
@@ -39,7 +46,8 @@ def df_to_tensor(
         samples = torch.from_numpy(df.values)
 
     return torch.stack(
-        [samples[i : i + window_size] for i in range(len(samples) - window_size + 1)]
+        [samples[i: i + window_size]
+            for i in range(len(samples) - window_size + 1)]
     )
 
 
@@ -49,27 +57,34 @@ def to_diffs(
     move_to_gpu: bool = False,
 ) -> Tuple[Tuple[torch.Tensor, torch.Tensor], Dict, bool]:
     addr_t = df["addr"].apply(lambda n: int(n, 16)).values
-    addr_w = np.copy(sliding_window_view(addr_t, window_size + 2))
+    addr_w = sliding_window_view(addr_t, window_size + 2, writeable=True)
     diffs = np.diff(addr_w)
-    max_diffs = np.max(np.abs(diffs))
-    diffs = diffs / max_diffs
+    max_diffs = np.max(diffs)
+    min_diffs = np.min(diffs)
+    avg_diffs = (min_diffs+max_diffs)/2
+    range_diffs = (max_diffs-min_diffs)/2
+    diffs = (diffs-avg_diffs)/range_diffs
     sequences = diffs[:, :window_size]
     targets = diffs[:, window_size]
-    sequences = torch.tensor(sequences)
-    targets = torch.tensor(targets)
-    instr_id = torch.tensor(df["insn_id"].to_numpy()[window_size + 1 :])
-    last_addr = torch.tensor(addr_t[window_size + 1 :])
-    pc = torch.tensor(
-        [int(str(pc).strip(), 16) for pc in df["pc"].to_numpy()[window_size + 1 :]]
-    )
-    hit = torch.tensor(df["hit"].to_numpy()[window_size + 1 :])
+    targets = torch.tensor(targets).float()
+    sequences = torch.tensor(sequences).unsqueeze(2).float()
+    instr_id = torch.tensor(sliding_window_view(df["insn_id"].to_numpy()[:-2], window_size, writeable=True)).unsqueeze(2)
+    #[-2] to ignore meta data for last delta
+    addr = torch.tensor(sliding_window_view(addr_t[:-2], window_size, writeable=True)).unsqueeze(2).float()
+    range_addr = (addr.max()-addr.min())
+    min_addr = addr.min()
+    addr = (addr-min_addr)/range_addr
+    pc = torch.tensor(sliding_window_view([int(str(pc).strip(), 16)for pc in df["pc"].to_numpy()][:-2], window_size, writeable=True)).unsqueeze(2).float()
+    min_pc = pc.min()
+    range_pc = (pc.max()-pc.min())
+    pc = (pc-min_pc)/range_pc
+    hit = torch.tensor(sliding_window_view(df["hit"][:-2].to_numpy(), window_size, writeable=True)).unsqueeze(2).float()
+
+    sequences = torch.cat((sequences, pc, addr, hit), 2)
+
     dataset_size = (
         sequences.numpy().nbytes
         + targets.numpy().nbytes
-        + instr_id.numpy().nbytes
-        + last_addr.numpy().nbytes
-        + pc.numpy().nbytes
-        + hit.numpy().nbytes
     )
 
     if move_to_gpu and (
@@ -78,21 +93,19 @@ def to_diffs(
         dataset_on_gpu = True
         sequences.cuda()
         targets.cuda()
-        instr_id.cuda()
-        last_addr.cuda()
-        pc.cuda()
-        hit.cuda()
     else:
         dataset_on_gpu = False
+        
+    norm_data = {}
+    norm_data["range_addr"] = range_addr
+    norm_data["min_addr"] = min_addr
+    norm_data["range_pc"] = range_pc
+    norm_data["min_pc"] = min_pc
+    norm_data["avg_diffs"] = avg_diffs
+    norm_data["range_diffs"] = range_diffs
+    norm_data["instr_id"] = instr_id
 
-    metadata_tensors = {}
-    metadata_tensors["instr_id"] = instr_id
-    metadata_tensors["addr"] = last_addr
-    metadata_tensors["pc"] = pc
-    metadata_tensors["hit"] = hit
-    metadata_tensors["max_diffs"] = max_diffs
-
-    return (sequences, targets), metadata_tensors, dataset_on_gpu
+    return (sequences, targets), norm_data, dataset_on_gpu
 
 
 def to_dataloader(
@@ -100,7 +113,7 @@ def to_dataloader(
 ) -> DataLoader:
     dataset = TensorDataset(*dataset)
     return DataLoader(
-        dataset, batch_size=batch_size, shuffle=False, pin_memory=(not dataset_on_gpu)
+        dataset, batch_size=batch_size, shuffle=True, pin_memory=(not dataset_on_gpu)
     )
 
 

@@ -8,6 +8,7 @@ from model import (
     AttentionRegressor,
     TimeSeriesLSTMPrefetcher,
     AttentionPrefetcher,
+    Model
 )
 import config
 
@@ -486,35 +487,27 @@ def train_command():
 
     args = parser.parse_args(sys.argv[2:])
 
+
     print("Loading trace file")
-    train_data, _ = prep.load_trace(
-        args.load_trace, args.num_prefetch_warmup_instructions * 1_000_000
-    )
+    train_data, test_data = read_load_trace_data(args.load_trace, args.num_prefetch_warmup_instructions*1000000)
     print("Loading train data from trace")
-    train_data = prep.df_to_tensor(train_data, diff_cols=["addr", "pc"])
+    train_data, _, training_set_on_gpu = prep.to_diffs(train_data, move_to_gpu=True)
+    train_loader = prep.to_dataloader(train_data, config.BATCH_SIZE, training_set_on_gpu)
 
-    model = AttentionPrefetcher(
-        n_features=train_data.shape[1], n_heads=1, hidden_dim=config.HIDDEN_DIM
-    )
+    model = Model()
+    print("Training Movedel")
+    model.train(train_loader, iterations=500)
 
-<<<<<<< HEAD
-    model = Model(256)
-    print("Training Model")
-    model.train(train_loader, training_set_on_gpu)
-=======
-    model.train(train_data)
->>>>>>> origin/lambda-nets
-
+    print("Loading test data from trace")
+    test_data, meta_data_test, _ = prep.to_diffs(test_data, move_to_gpu=False)
+    test_loader = prep.to_dataloader(test_data, batch_size=config.GENERATE_BATCH_SIZE)
+    
     if args.model is not None:
         model.save(args.model)
 
     if args.generate is not None:
-<<<<<<< HEAD
         print("Generating prefetches")
-        prefetches = model.generate(test_loader, meta_data_test["max_diffs"]) 
-=======
-        prefetches = model.generate(test_loader, meta_data_test["max_diffs"])
->>>>>>> origin/lambda-nets
+        prefetches = model.generate(test_loader, meta_data_test) 
         generate_prefetch_file(args.generate, prefetches)
 
 

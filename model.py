@@ -5,8 +5,8 @@ from tqdm import tqdm
 import torch
 from torch import optim, nn
 from torch.utils.data import DataLoader, dataloader
-from lambda_networks import LambdaLayer
-from math import floor
+from torch.nn import TransformerEncoder, TransformerEncoderLayer
+import math
 import config
 
 
@@ -157,6 +157,119 @@ class TimeSeriesLSTMPrefetcher(MLPrefetchModel):
                 bar.update(1)
         bar.close()
         return prefetches
+class PositionalEncoding(nn.Module):
+    
+
+    def __init__(self, d_model, dropout=0.1, max_len=5000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x):
+        x = x + self.pe[:x.size(0), :]
+        return self.dropout(x)
+
+class TransformerModel(nn.Module):
+    def __init__(self, ntoken, ninp, nhead, nhid, nlayers, dropout=0.5):
+        super(TransformerModel, self).__init__()
+        self.encoder = nn.Linear(ntoken, ninp)
+        self.pos_encoder = PositionalEncoding(ninp, dropout)
+        encoder_layers = TransformerEncoderLayer(ninp, nhead, nhid, dropout)
+        self.transformer_encoder = TransformerEncoder(encoder_layers, nlayers)
+        self.ninp = ninp
+        self.decoder = nn.Linear(ninp*config.DIFFS_DEFAULT_WINDOW, 1)
+        self.init_weights()
+
+    def forward(self, src):
+        src = src.squeeze().transpose(0,1)
+        src = self.encoder(src) * math.sqrt(self.ninp)
+        src = self.pos_encoder(src)
+        output = self.transformer_encoder(src)
+        output = output.transpose(0,1).flatten(1)
+        output = self.decoder(output)
+        return output
+    
+    def init_weights(self):
+        initrange = 0.1
+        self.encoder.weight.data.uniform_(-initrange, initrange)
+        self.decoder.bias.data.zero_()
+        self.decoder.weight.data.uniform_(-initrange, initrange)
+
+class TransformerModelPrefetcher(MLPrefetchModel):
+    def __init__(self, ntokens : int = config.TRANSFORMER_ENCODER_NTOKENS, 
+                 emsize : int = config.TRANSFORMER_ENCODER_EMSIZE, 
+                 nhead : int = config.TRANSFORMER_ENCODER_NHID, 
+                 nhid : int = config.TRANSFORMER_ENCODER_NHEAD, 
+                 nlayers : int = config.TRANSFORMER_ENCODER_NLAYERS):
+        super().__init__()
+        self.model = TransformerModel(ntokens, emsize, nhead, nhid, nlayers).float().cuda()
+        self.criterion = nn.MSELoss().cuda()
+        lr = 5.0 # learning rate
+        self.optimizer = torch.optim.Adam(self.model.parameters())
+        # self.optimizer = torch.optim.SGD(self.model.parameters(), lr=lr)
+        # self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, 1.0, gamma=0.95)
+
+    def load(self, path):
+        self.model.load_state_dict(torch.load(path))
+
+    def save(self, path):
+        torch.save(self.model.state_dict(), path)
+
+    def train(self, loader, iterations = None):
+        self.model.train()
+        bar = tqdm(total=len(loader))
+        avg_loss = 0
+        for i, (seq_batch, label_batch) in enumerate(loader):
+            self.optimizer.zero_grad(set_to_none=True)
+            model_prediction = self.model(seq_batch.unsqueeze(-1).cuda())
+            loss = self.criterion(model_prediction, label_batch.unsqueeze(-1).cuda())
+            avg_loss += loss.item()
+            loss.backward()
+            nn.utils.clip_grad_norm_(self.model.parameters(), config.MAX_CLIP)
+            self.optimizer.step()
+            # self.scheduler.step()
+            bar.update(1)
+            if i % 100 == 99:
+                avg_loss /= 100
+                print(f"Iter{i} avg_loss: {avg_loss}")
+                avg_loss = 0
+            if iterations is not None and ((i+1)%iterations==0):
+                break
+        bar.close()
+
+    def generate(self, loader, norm_data):
+        range_addr = norm_data["range_addr"]
+        min_addr = norm_data["min_addr"]
+        avg_diffs = norm_data["avg_diffs"]
+        range_diffs = norm_data["range_diffs"]
+        instr_id = norm_data["instr_id"]
+        bar = tqdm(total=len(loader))
+        self.model.eval()
+        with torch.no_grad():
+            prefetches = []
+            avg_loss = 0
+            for i, (seq_batch, label_batch) in enumerate(loader):
+                model_prediction = self.model(seq_batch.unsqueeze(-1).cuda())
+                loss = self.criterion(model_prediction, label_batch.unsqueeze(-1).cuda())
+                avg_loss += loss.item()
+                load_delta = (model_prediction * range_diffs) + avg_diffs
+                load_addr = (addr.unsqueeze(1).cuda() + load_delta).squeeze(1).tolist()
+                # prefetcher counts greater than 2 will be ignored by simulator
+                prefetches.extend(list(zip(instr_id.tolist(), load_addr)))
+                bar.update(1)
+                if i % 100 == 99:
+                    avg_loss /= 100
+                    print(f"Iter{i} avg_loss: {avg_loss}")
+                    avg_loss = 0
+        bar.close()
+        return prefetches
 
 
 class AttentionRegressor(nn.Module):
@@ -199,3 +312,5 @@ class AttentionPrefetcher(MLPrefetchModel):
 
     def generate(self, data: torch.Tensor):
         pass
+
+Model = TransformerModelPrefetcher 
