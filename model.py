@@ -195,7 +195,7 @@ class TransformerModel(nn.Module):
         return output
     
     def init_weights(self):
-        initrange = 0.1
+        initrange = 0.0001
         self.encoder.weight.data.uniform_(-initrange, initrange)
         self.decoder.bias.data.zero_()
         self.decoder.weight.data.uniform_(-initrange, initrange)
