@@ -62,10 +62,9 @@ def to_diffs(
     addr_w = sliding_window_view(addr_t, window_size + 2, writeable=True)
     
     diffs = np.diff(addr_w)
-    max_diffs = np.max(diffs)
-    min_diffs = np.min(diffs)
-    range_diffs = (max_diffs-min_diffs)
-    diffs = 2*((diffs-min_diffs)/range_diffs)-1
+    mean_diffs = np.mean(diffs)
+    std_diffs = np.std(diffs)
+    diffs = (diffs-mean_diffs)/std_diffs
     
     sequences = diffs[:, :window_size]
     targets = diffs[:, window_size]
@@ -105,8 +104,8 @@ def to_diffs(
     norm_data["min_addr"] = min_addr
     norm_data["min_pc"] = min_pc
     norm_data["range_pc"] = range_pc
-    norm_data["min_diffs"] = min_diffs
-    norm_data["range_diffs"] = range_diffs
+    norm_data["mean_diffs"] = mean_diffs
+    norm_data["std_diffs"] = std_diffs
     
     return sequences, targets, instr_id, norm_data, dataset_on_gpu
 

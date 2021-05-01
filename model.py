@@ -246,13 +246,15 @@ class TransformerModelPrefetcher(MLPrefetchModel):
         
         range_addr = norm_data["range_addr"]
         min_addr = norm_data["min_addr"]
-        min_diffs = norm_data["min_diffs"]
-        range_diffs = norm_data["range_diffs"]
+        mean_diffs = norm_data["mean_diffs"]
+        std_diffs = norm_data["std_diffs"]
         
         bar = tqdm(total=len(loader))
         self.model.eval()
         def minmax_denormalize(val, min, range):
             return (((val + 1)/2)*range)+min
+        def zscore_denormalize(val, mean, std):
+            return (val*std)/mean
         with torch.no_grad():
             prefetches = []
             avg_loss = 0
@@ -260,7 +262,7 @@ class TransformerModelPrefetcher(MLPrefetchModel):
                 model_prediction = self.model(seq_batch.unsqueeze(-1).cuda())
                 loss = self.criterion(model_prediction, label_batch.unsqueeze(-1).cuda())
                 avg_loss += loss.item()
-                load_delta = minmax_denormalize(model_prediction, min_diffs, range_diffs)
+                load_delta = zscore_denormalize(model_prediction, mean_diffs, std_diffs)
                 addr = seq_batch[:, -1, 2] # : all entries in batch, -1 last entry in seq, 2 3rd feature (addr) 
                 load_addr = minmax_denormalize(addr, min_addr, range_addr)
                 target_addr = (load_addr + load_delta.squeeze(1).cpu()).long()
