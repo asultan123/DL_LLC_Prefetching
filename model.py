@@ -186,16 +186,22 @@ class LambdaNetRegressor(nn.Module):
 
 class AttentionPrefetcher(MLPrefetchModel):
     def __init__(
-        self, input_dim: int, hidden_dim: int, key_dim: int, seq_length: int
+        self,
+        input_dim: int,
+        hidden_dim: int,
+        key_dim: int,
+        seq_length: int,
+        tag: str = "LambdaNet",
     ) -> None:
         super().__init__()
+        self.tag = tag
         self.model = (
             LambdaNetRegressor(input_dim, hidden_dim, key_dim, seq_length)
             .double()
             .cuda()
         )
 
-    def train(self, data: pd.DataFrame):
+    def train(self, data: pd.DataFrame, save_losses: bool = False):
         train_data = prep.df_to_tensor(data)
         labels = train_data[1:, -1, -1]
         loader = DataLoader(
@@ -205,15 +211,17 @@ class AttentionPrefetcher(MLPrefetchModel):
         )
         opt = optim.Adam(self.model.parameters(), lr=1e-3)  # type: ignore
         criterion = nn.MSELoss()
+        loss_data = torch.zeros(len(loader), dtype=torch.double)
         for i, (seq_batch, label_batch) in tqdm(enumerate(loader), total=len(loader)):
             opt.zero_grad(set_to_none=True)
             predictions = self.model(seq_batch)
             loss = criterion(predictions.flatten(), label_batch.flatten())
+            loss_data[i] = loss
             nn.utils.clip_grad_norm_(self.model.parameters(), config.MAX_CLIP)
             loss.backward()
             opt.step()
-            if i % 100 == 99:
-                print(f"Iter {i} loss: {loss}")
+        with open(self.tag + "_train_losses.pt", "w") as fp:
+            torch.save(loss_data, fp)
 
     def generate(self, data: pd.DataFrame):
         origin = torch.tensor(data["addr"].values[0]).long().cuda()
