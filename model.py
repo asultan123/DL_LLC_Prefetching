@@ -1,14 +1,15 @@
-from abc import ABC, abstractmethod
-from typing import Optional
+from abc import abstractmethod
+from typing import Any, List
+
+import pandas as pd
+import torch
+from torch import nn, optim
+from torch.utils.data import DataLoader
 from torch.utils.data.dataset import TensorDataset
 from tqdm import tqdm
-import torch
-from torch import optim, nn
-from torch.utils.data import DataLoader, dataloader
-from lambda_networks import LambdaLayer
-from math import floor
+
 import config
-import einops
+import prep
 
 
 class MLPrefetchModel(object):
@@ -184,26 +185,54 @@ class LambdaNetRegressor(nn.Module):
 
 
 class AttentionPrefetcher(MLPrefetchModel):
-    def __init__(self, input_dim: int, hidden_dim: int, key_dim: int, seq_length: int) -> None:
+    def __init__(
+        self, input_dim: int, hidden_dim: int, key_dim: int, seq_length: int
+    ) -> None:
         super().__init__()
-        self.model = LambdaNetRegressor(input_dim, hidden_dim, key_dim, seq_length).double().cuda()
+        self.model = (
+            LambdaNetRegressor(input_dim, hidden_dim, key_dim, seq_length)
+            .double()
+            .cuda()
+        )
 
-    def train(self, train_data: torch.Tensor):
+    def train(self, data: pd.DataFrame):
+        train_data = prep.df_to_tensor(data)
         labels = train_data[1:, -1, -1]
         loader = DataLoader(
-            TensorDataset(train_data[:-1], labels), batch_size=config.BATCH_SIZE,drop_last=True
+            TensorDataset(train_data[:-1], labels),
+            batch_size=config.BATCH_SIZE,
+            drop_last=True,
         )
         opt = optim.Adam(self.model.parameters(), lr=1e-3)  # type: ignore
         criterion = nn.MSELoss()
         for i, (seq_batch, label_batch) in tqdm(enumerate(loader), total=len(loader)):
             opt.zero_grad(set_to_none=True)
             predictions = self.model(seq_batch)
-            loss = criterion(predictions, label_batch)
+            loss = criterion(predictions.flatten(), label_batch.flatten())
             nn.utils.clip_grad_norm_(self.model.parameters(), config.MAX_CLIP)
             loss.backward()
             opt.step()
             if i % 100 == 99:
-                print(f"Iter {i} loss: {loss:.3f}")
+                print(f"Iter {i} loss: {loss}")
 
-    def generate(self, data: torch.Tensor):
-        pass
+    def generate(self, data: pd.DataFrame):
+        origin = torch.tensor(data["addr"].values[0]).long().cuda()
+        min_addr = min(data["addr"])
+        max_addr = max(data["addr"])
+        dataset = prep.df_to_tensor(data)
+        loader = DataLoader(
+            TensorDataset(dataset),
+            batch_size=config.BATCH_SIZE,
+            shuffle=False,
+            drop_last=True,
+        )
+        results = torch.zeros(
+            (len(loader), config.BATCH_SIZE, 1), dtype=torch.long
+        ).cuda()
+        with torch.no_grad():
+            for i, seq_batch in tqdm(enumerate(loader), total=len(loader)):
+                temp = self.model(seq_batch[0])
+                results[i] = ((temp * max_addr) - min_addr).long()
+        results = torch.cumsum(torch.hstack((origin, results.flatten())), dim=0).cpu()
+        return zip(data["insn_id"][1 : len(results)], (results & 0xFFFFFFC0).tolist())
+

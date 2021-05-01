@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 import torch
+from tqdm import tqdm
 
 # from numpy.lib.stride_tricks import sliding_window_view
 from torch.utils.data import DataLoader, TensorDataset
@@ -33,20 +34,12 @@ def load_trace(
 
 
 def df_to_tensor(
-    df: pd.DataFrame,
-    diff_cols: Optional[List[str]] = None,
-    window_size: int = config.DIFFS_DEFAULT_WINDOW,
+    df: pd.DataFrame, window_size: int = config.DIFFS_DEFAULT_WINDOW,
 ) -> torch.Tensor:
-    if diff_cols is not None:
-        diffed = torch.from_numpy(np.diff(df[diff_cols].values, axis=0))
-        not_diffed = torch.from_numpy(
-            df[[name for name in df.columns if name not in diff_cols]].values[1:]
-        )
-        samples = torch.hstack([not_diffed, diffed]).double()
-    else:
-        samples = torch.from_numpy(df.values).double()
-
-    samples /= torch.max(samples, dim=0)[0].double()
+    samples = torch.from_numpy(
+        np.diff(df[["pc", "addr"]].values.astype(np.double), axis=0)
+    )
+    samples = (samples - samples.min()) / samples.max()
     return torch.stack(
         [samples[i : i + window_size] for i in range(len(samples) - window_size + 1)]
     ).cuda()

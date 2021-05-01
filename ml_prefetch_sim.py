@@ -486,16 +486,12 @@ def train_command():
     args = parser.parse_args(sys.argv[2:])
 
     print("Loading trace file")
-    train_data, _ = prep.load_trace(
+    train_data, test = prep.load_trace(
         args.load_trace, args.num_prefetch_warmup_instructions * 1_000_000
     )
-    print("Loading train data from trace")
-    train_data = prep.df_to_tensor(
-        train_data.drop(columns=["hit"]), diff_cols=["pc", "addr"]
-    )
-
+    print(test.head())
     model = AttentionPrefetcher(
-        input_dim=train_data.shape[-1],
+        input_dim=2,
         hidden_dim=config.HIDDEN_DIM,
         key_dim=config.KEY_DIM,
         seq_length=config.DIFFS_DEFAULT_WINDOW,
@@ -507,7 +503,7 @@ def train_command():
         model.save(args.model)
 
     if args.generate is not None:
-        prefetches = model.generate(test_loader, meta_data_test["max_diffs"])
+        prefetches = model.generate(test)
         generate_prefetch_file(args.generate, prefetches)
 
 
