@@ -1,7 +1,8 @@
 # DL For LLC Prefetching
 # Data preperation
 
-Load addresses were preprocessed as deltas between one address and another in sequences of arbitrary window size defined in config.py 
+Load addresses were preprocessed as deltas between one address and another in sequences of arbitrary window size with stride = 1. These sequences of deltas are effectively sentences in the NLP space. The sequences of diffs are then augmented with normalized PC, normalized load address, and whether a hit occured in the cache (assuming no prefetcher exists in LLC). Below is a visualization of the above preprocessing pipeline.
+
 ![Trace Preprocessing Pipeline](https://github.com/asultan123/DL_LLC_Prefetching/blob/Transformer/preprocessing.png)
 
 
