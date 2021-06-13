@@ -90,6 +90,10 @@ Load addresses were preprocessed as deltas between one address and another in se
 
 ![Trace Preprocessing Pipeline](https://github.com/asultan123/DL_LLC_Prefetching/blob/Transformer/preprocessing.png)
 
+# Results
+
+Both models converge during training and result in low MSE loss in testing. However, IPC results in the simulator did not improve above baseline. Address deltas fluctuate aggressively based on PC in trace. Treating deltas as numerical values to approximate resulted in overall subpar performance. A better approach would be treating deltas as words in a dictionary similar to conventional language learning tasks. Below are the results of both training and testing for both LambdaNet and the Transformer Encoder models on traces from the Spec06 benchmark.
+
 # Usage
 
 # Simulator Source: https://github.com/Quangmire/ChampSim
