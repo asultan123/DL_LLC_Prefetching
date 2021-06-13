@@ -1,17 +1,26 @@
 # DL For LLC Prefetching
 # Data preperation
-Load addresses were preprocessed as deltas between one address and another. Model Implementation (Transformer/ LambdaNets) available in model.py. The Champsim binary is compiled with a unicore processor, only LLC cache and with prefetching performed based on an output file after running an inference pass on the model.
+
+Load addresses were preprocessed as deltas between one address and another in sequences of arbitrary window size defined in config.py 
 
 # Requirements
+
 Anaconda: https://www.anaconda.com/products/individual 
+
 Numpy >= 1.20
 
 # Usage
 
-## build_command (builds champsim binary that simulates LLC cache + loads prefetch file from model)
+## build_command 
+
+(builds champsim binary that simulates LLC cache + Several prefetching techniques with file based prefetching being one of them)
+
 python ml_prefetch_sim build 
 
 ## run_command
+
+(builds champsim binary that simulates LLC cache + Several prefetching techniques with file based prefetching being one of them)
+
 python ml_prefetch_sim run 
 
 ## eval_command
@@ -27,16 +36,28 @@ python ml_prefetch_sim generate
 python ml_prefetch_sim help 
 
 # Models Used
+
+Model Implementation (Transformer/ LambdaNets) available in model.py. The Champsim binary is compiled with a unicore processor, only LLC cache and with prefetching performed based on an output file after running an inference pass on a trace file using either one of the below models.
+
 ## Lambda Nets: https://arxiv.org/abs/2102.08602
+
 ## Transformer Encoder: https://arxiv.org/abs/1706.03762
 model configurationg available in config.py
+
 Current defaults:
-DIFFS_DEFAULT_WINDOW=32
+
+DIFFS_DEFAULT_WINDOW=32 # Effectively the sequence size for the input 
+
 TRANSFORMER_ENCODER_NTOKENS :int = 4 # Input dim for each element in sequence of size DIFFS_DEFAULT_WINDOW
+
 TRANSFORMER_ENCODER_EMSIZE :int = 64 # embedding dimension
+
 TRANSFORMER_ENCODER_NHID :int = 64 # the dimension of the feedforward network model in nn.TransformerEncoder
+
 TRANSFORMER_ENCODER_NLAYERS :int = 2 # the number of nn.TransformerEncoderLayer in nn.TransformerEncoder
+
 TRANSFORMER_ENCODER_NHEAD :int = 2 # the number of heads in the multiheadattention models
+
 TRANSFORMER_ENCODER_DROPOUT :int = 0.2 # the dropout value
 
 
