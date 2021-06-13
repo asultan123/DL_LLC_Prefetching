@@ -1,10 +1,6 @@
 # DL For LLC Prefetching
-# Data preperation
 
-Load addresses were preprocessed as deltas between one address and another in sequences of arbitrary window size with stride = 1. These sequences of deltas are effectively sentences in the NLP space. The sequences of diffs are then augmented with normalized PC, normalized load address, and whether a hit occured in the cache (assuming no prefetcher exists in LLC). Below is a visualization of the above preprocessing pipeline.
-
-![Trace Preprocessing Pipeline](https://github.com/asultan123/DL_LLC_Prefetching/blob/Transformer/preprocessing.png)
-
+This project attempts to apply two DL models (Transformer Encoder and LambdaNets) to LLC prefetching on a unicore processor with no L1/L2 cache and just an LLC cache. The simulation environment for the DL based prefetcher is provided by champsim.
 
 # Requirements
 
@@ -14,6 +10,12 @@ Numpy >= 1.20
 
 # Usage
 
+## trace download
+
+(Downloads traces from https://utexas.app.box.com/s/2k54kp8zvrqdfaa8cdhfquvcxwh7yn85, total size ~ 90GB. Load Traces are used for training, ChampSim Traces are used for IPC eval. ChampSim traces have additional metadata needed for metrics calculation)
+
+./download.sh 
+
 ## build_command 
 
 (builds champsim binary that simulates LLC cache + Several prefetching techniques with file based prefetching being one of them)
@@ -22,17 +24,26 @@ python ml_prefetch_sim build
 
 ## run_command
 
-(builds champsim binary that simulates LLC cache + Several prefetching techniques with file based prefetching being one of them)
+(Runs ChampSim on specified traces + Optional prefetch file for traces)
 
 python ml_prefetch_sim run 
 
 ## eval_command
+
+(Parses and computes metrics on simulation results)
+
 python ml_prefetch_sim eval 
 
 ## train_command
+
+(Trains selected model)
+
 python ml_prefetch_sim train 
 
 ## generate_command
+
+(Generates the prefetch file after an inference pass using a trace and a chosen model)
+
 python ml_prefetch_sim generate 
 
 ## help_command
@@ -63,9 +74,15 @@ TRANSFORMER_ENCODER_NHEAD :int = 2 # the number of heads in the multiheadattenti
 
 TRANSFORMER_ENCODER_DROPOUT :int = 0.2 # the dropout value
 
+# Data preperation
+
+Load addresses were preprocessed as deltas between one address and another in sequences of arbitrary window size with stride = 1. These sequences of deltas are effectively sentences in the NLP space. The sequences of diffs are then augmented with normalized PC, normalized load address, and whether a hit occured in the cache (assuming no prefetcher exists in LLC). Below is a visualization of the above preprocessing pipeline.
+
+![Trace Preprocessing Pipeline](https://github.com/asultan123/DL_LLC_Prefetching/blob/Transformer/preprocessing.png)
 
 # Usage
 
+# Simulator Source: https://github.com/Quangmire/ChampSim
 
 # Modified ChampSim for ML Prefetching Competition
 
