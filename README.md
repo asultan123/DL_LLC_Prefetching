@@ -2,6 +2,8 @@
 # Data preperation
 
 Load addresses were preprocessed as deltas between one address and another in sequences of arbitrary window size defined in config.py 
+![Trace Preprocessing Pipeline](https://github.com/asultan123/DL_LLC_Prefetching/blob/Transformer/preprocessing.png)
+
 
 # Requirements
 
