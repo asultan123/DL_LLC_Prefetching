@@ -1,3 +1,48 @@
+# DL For LLC Prefetching
+# Data preperation
+Load addresses were preprocessed as deltas between one address and another. Model Implementation (Transformer/ LambdaNets) available in model.py. The Champsim binary is compiled with a unicore processor, only LLC cache and with prefetching performed based on an output file after running an inference pass on the model.
+
+# Requirements
+Anaconda: https://www.anaconda.com/products/individual 
+Numpy >= 1.20
+
+# Usage
+
+## build_command (builds champsim binary that simulates LLC cache + loads prefetch file from model)
+python ml_prefetch_sim build 
+
+## run_command
+python ml_prefetch_sim run 
+
+## eval_command
+python ml_prefetch_sim eval 
+
+## train_command
+python ml_prefetch_sim train 
+
+## generate_command
+python ml_prefetch_sim generate 
+
+## help_command
+python ml_prefetch_sim help 
+
+# Models Used
+## Lambda Nets: https://arxiv.org/abs/2102.08602
+## Transformer Encoder: https://arxiv.org/abs/1706.03762
+model configurationg available in config.py
+Current defaults:
+DIFFS_DEFAULT_WINDOW=32
+TRANSFORMER_ENCODER_NTOKENS :int = 4 # Input dim for each element in sequence of size DIFFS_DEFAULT_WINDOW
+TRANSFORMER_ENCODER_EMSIZE :int = 64 # embedding dimension
+TRANSFORMER_ENCODER_NHID :int = 64 # the dimension of the feedforward network model in nn.TransformerEncoder
+TRANSFORMER_ENCODER_NLAYERS :int = 2 # the number of nn.TransformerEncoderLayer in nn.TransformerEncoder
+TRANSFORMER_ENCODER_NHEAD :int = 2 # the number of heads in the multiheadattention models
+TRANSFORMER_ENCODER_DROPOUT :int = 0.2 # the dropout value
+
+
+# Usage
+
+
 # Modified ChampSim for ML Prefetching Competition
 
 We will use ChampSim to evaluate the effectiveness of your ML prefetchers.  You
