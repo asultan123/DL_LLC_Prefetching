@@ -53,10 +53,8 @@ python ml_prefetch_sim help
 
 Model Implementation (Transformer/ LambdaNets) available in model.py. The Champsim binary is compiled with a unicore processor, only LLC cache and with prefetching performed based on an output file after running an inference pass on a trace file using either one of the below models.
 
-## Lambda Nets: https://arxiv.org/abs/2102.08602
-
 ## Transformer Encoder: https://arxiv.org/abs/1706.03762
-model configurationg available in config.py
+Model configuration available in config.py
 
 Current defaults:
 
@@ -73,6 +71,18 @@ TRANSFORMER_ENCODER_NLAYERS :int = 2 # the number of nn.TransformerEncoderLayer 
 TRANSFORMER_ENCODER_NHEAD :int = 2 # the number of heads in the multiheadattention models
 
 TRANSFORMER_ENCODER_DROPOUT :int = 0.2 # the dropout value
+
+## Lambda Nets (Switch to LambdaNet branch): https://arxiv.org/abs/2102.08602
+
+Model configuration available in config.py
+
+Note that model only uses normalized pc and load addresses differences
+
+Current defaults:
+
+DIFFS_DEFAULT_WINDOW: int =32 # Effectively the sequence size for the input 
+HIDDEN_DIM: int = 64
+KEY_DIM: int = 16
 
 # Data preperation
 
