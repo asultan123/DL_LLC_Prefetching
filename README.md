@@ -1,4 +1,4 @@
-# DL For LLC Prefetching
+# NLP DL Models For LLC Prefetching
 
 This project attempts to apply two DL models (Transformer Encoder and LambdaNets) to LLC prefetching on a unicore processor with no L1/L2 cache and just an LLC cache. The simulation environment for the DL based prefetcher is provided by champsim.
 
